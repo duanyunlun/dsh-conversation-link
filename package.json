@@ -1,0 +1,55 @@
+{
+  "name": "dsh-conversation-bindings",
+  "version": "0.1.0",
+  "description": "Peer communication, supervision, and tool guardrails between conversations in one DeepSeek Harness process.",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "plugin",
+    "agent",
+    "multi-agent",
+    "cross-session",
+    "conversation",
+    "supervisor"
+  ],
+  "license": "MIT",
+  "author": "duanyunlun",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/duanyunlun/dsh-conversation-bindings.git"
+  },
+  "homepage": "https://github.com/duanyunlun/dsh-conversation-bindings#readme",
+  "bugs": {
+    "url": "https://github.com/duanyunlun/dsh-conversation-bindings/issues"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "store.js",
+    "peers.js",
+    "tools.js",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "client": {
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "test": "node --test 'test/*.test.mjs'"
+  }
+}
