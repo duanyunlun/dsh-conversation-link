@@ -301,10 +301,31 @@ export function relaySummary(detail) {
 }
 
 /**
+ * Pick the inbox boundary one delivery should use.
+ *
+ * `auto` exists because a queued message waits for the target's whole turn to
+ * end — the Harness delivers `followup` as the sole ordinary message of a fresh
+ * turn. A conversation that is running a long orchestration would therefore
+ * not see a peer's report until it finished, which is exactly when the report
+ * stopped being useful. Steering reaches the target at its next step boundary
+ * instead (the same choice the Harness's own `agent-team` mailbox makes for its
+ * root), while an idle or closed target is better served by a real turn of its
+ * own: steering an idle driver produces a claimed message rather than a turn
+ * boundary, so the wake path keeps `queue`.
+ * @param status - the target's live status.
+ * @param mode - requested mode: `auto`, `queue`, `steer`, or `inject`.
+ * @returns the mode to act on: `queue`, `steer`, or `inject`.
+ */
+export function resolveDelivery(status, mode) {
+  if (mode !== 'auto') return mode
+  return status === 'running' ? 'steer' : 'queue'
+}
+
+/**
  * Deliver one model-visible message into a live conversation.
  * @param agent - exact live target agent.
  * @param detail - sender identity and the body to frame.
- * @param mode - `queue` starts a turn, `steer` joins the next step, `inject` adds context without waking.
+ * @param mode - resolved mode: `queue` starts a turn, `steer` joins the next step, `inject` adds context without waking.
  * @returns the accepted message identity.
  */
 export function deliver(agent, detail, mode) {
@@ -353,6 +374,9 @@ export function frameBriefing(detail) {
     '- When the supervisor sends you something, act on it — and say so if it conflicts with what you know.',
     '',
     `[Reply with conversation_send target="${detail.supervisorHandle}".]`,
+    '[Delivery is automatic: the message reaches a running conversation at its next step boundary, '
+      + 'and an idle one as a fresh turn. Pass mode "queue" only when the message should wait for the '
+      + 'conversation\'s current work to finish.]',
   ].join('\n')
 }
 

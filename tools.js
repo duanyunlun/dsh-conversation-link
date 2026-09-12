@@ -16,7 +16,7 @@
  * @module dsh-conversation-link/tools
  */
 
-import { condense, deliver, frameBriefing, isAddressable, listConversations, openConversation, optional, projectStatus, spawnConversation } from './peers.js'
+import { condense, deliver, frameBriefing, isAddressable, listConversations, openConversation, optional, projectStatus, resolveDelivery, spawnConversation } from './peers.js'
 
 /** Shown when a conversation tries to address one it never bound and that never bound it. */
 const AUTHORIZE_HINT = 'Bind it first with conversation_bind, pass name to conversation_send to register it in the same call, or wait for it to send you a message.'
@@ -395,12 +395,14 @@ export function createTools(ctx, store, options = {}) {
       name: 'conversation_send',
       description: 'Send a message to another conversation: any conversation this workspace shows the human, or a member '
         + 'of yours, or a supervisor of you. On first contact the target is registered as a member automatically (name it '
-        + 'with `name`, otherwise it is addressed by its handle afterwards). Delivery modes: queue starts a new turn '
-        + '(default), steer joins the target at its next step boundary, inject adds context without waking it.',
+        + 'with `name`, otherwise it is addressed by its handle afterwards). Delivery mode `auto` (the default) reaches a '
+        + 'conversation that is running at its next step boundary instead of waiting for its turn to end, and gives an '
+        + 'idle one a fresh turn; `queue` always starts a new turn, `steer` always joins the nearest step, `inject` adds '
+        + 'context without waking the target. The returned `mode` is where the message actually landed.',
       parameters: {
         target: { type: 'string', required: true, description: 'Conversation handle or session id, a member name you registered, or the session id of a conversation that supervises you.' },
         message: { type: 'string', required: true, description: 'The message body the target model will read.' },
-        mode: { type: 'string', enum: ['queue', 'steer', 'inject'], description: 'Delivery mode; defaults to queue.' },
+        mode: { type: 'string', enum: ['auto', 'queue', 'steer', 'inject'], description: 'Delivery mode; defaults to auto.' },
         name: { type: 'string', description: 'Member name to register the target under on first contact. Defaults to the target\'s handle; ignored when a relationship already exists.' },
       },
       output: {
@@ -411,7 +413,7 @@ export function createTools(ctx, store, options = {}) {
           ok: { type: 'boolean' },
           handle: { type: 'string' },
           sessionId: { type: 'string' },
-          mode: { type: 'string' },
+          mode: { type: 'string', description: 'Where the message actually landed: `queue`, `steer`, or `inject` — `auto` is resolved before delivery.' },
           messageId: { type: 'string' },
           targetStatus: { type: 'string' },
           opened: { type: 'boolean', description: 'True when the conversation was stored but closed, so it was opened to receive this message.' },
@@ -447,7 +449,9 @@ export function createTools(ctx, store, options = {}) {
         }
         const opened = ctx.agents.get(addressed.sessionId) === undefined
         const agent = await openConversation(ctx, addressed.sessionId)
-        const mode = args.mode === undefined ? 'queue' : String(args.mode)
+        // The status is read after opening, so a conversation that was cold is
+        // classified by what it is now rather than by having had no agent.
+        const mode = resolveDelivery(agent.status, args.mode === undefined ? 'auto' : String(args.mode))
         const messageId = deliver(agent, {
           senderId: selfId,
           form: messageForm,

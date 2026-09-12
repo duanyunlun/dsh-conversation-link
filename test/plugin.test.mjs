@@ -198,10 +198,40 @@ test('binding a peer makes it addressable by member name', async (t) => {
   const sent = await call(tools, 'conversation_send', { target: 'frontend', message: 'Ship the login form.' }, a)
   assert.equal(sent.ok, true)
   assert.equal(sent.sessionId, 'session-b')
+  // The default is `auto`; an idle target resolves to a fresh turn of its own.
+  assert.equal(sent.targetStatus, 'idle')
   assert.equal(sent.mode, 'queue')
   assert.equal(sent.handle, bound.handle)
   assert.equal(b.delivered.length, 1)
   assert.equal(b.delivered[0].mode, 'queue')
+})
+
+test('auto delivery reaches a running target at its next step', async (t) => {
+  const { tools, a, b, dir } = mount()
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  await call(tools, 'conversation_bind', { target: 'session-b', name: 'frontend' }, a)
+
+  // A conversation running a long turn must not have to finish it before it
+  // can read a peer's report: queueing would park the message in `next-turn`.
+  b.status = 'running'
+  const sent = await call(tools, 'conversation_send', { target: 'frontend', message: 'Done: the form ships.' }, a)
+  assert.equal(sent.targetStatus, 'running')
+  assert.equal(sent.mode, 'steer')
+  assert.equal(b.delivered[0].mode, 'steer')
+  assert.equal(b.inbox.nextStep.length, 1)
+  assert.equal(b.inbox.nextTurn.length, 0)
+})
+
+test('an explicit mode overrides auto on a running target', async (t) => {
+  const { tools, a, b, dir } = mount()
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  await call(tools, 'conversation_bind', { target: 'session-b', name: 'frontend' }, a)
+  b.status = 'running'
+
+  const queued = await call(tools, 'conversation_send', { target: 'frontend', message: 'Take this next turn.', mode: 'queue' }, a)
+  assert.equal(queued.mode, 'queue')
+  assert.equal(b.inbox.nextTurn.length, 1)
+  assert.equal(b.inbox.nextStep.length, 0)
 })
 
 test('a peer can be bound and addressed by its handle', async (t) => {
