@@ -19,7 +19,7 @@
 import { condense, deliver, frameBriefing, isAddressable, listConversations, openConversation, optional, projectStatus, spawnConversation } from './peers.js'
 
 /** Shown when a conversation tries to address one it never bound and that never bound it. */
-const AUTHORIZE_HINT = 'Bind it first with conversation_bind, or wait for it to send you a message.'
+const AUTHORIZE_HINT = 'Bind it first with conversation_bind, pass name to conversation_send to register it in the same call, or wait for it to send you a message.'
 
 /**
  * Compile an author-facing property map into the object schema the model sees.
@@ -70,8 +70,9 @@ function requireAgent(exec) {
  *
  * Two relationships authorize a message: the caller supervises the target (an
  * outbound binding), or the target supervises the caller (the reply path, which
- * needs no second binding). Anything else is refused, so no conversation can
- * inject instructions into an unrelated one.
+ * needs no second binding). Anything else is unaddressed — `conversation_send`
+ * then registers the target on first contact (see `registerMember`), while the
+ * read-only and rule tools still refuse.
  * @param store - binding store.
  * @param callerId - sending conversation session id.
  * @param reference - member name, conversation handle, or session id.
@@ -91,10 +92,12 @@ function authorize(store, callerId, reference) {
   }
   const inbound = store.inbound(callerId).find(binding => binding.owner === resolved)
   if (inbound !== undefined) {
+    // Phrased for whoever reads the delivered message — here the supervisor —
+    // the same way `notifySupervisor` phrases its own notices.
     return {
       sessionId: inbound.owner,
       senderName: inbound.name,
-      relation: `this conversation supervises you as "${inbound.name}"`
+      relation: `you supervise this conversation as "${inbound.name}"`
         + (inbound.role.length > 0 ? ` (${inbound.role})` : ''),
     }
   }
@@ -127,11 +130,15 @@ async function readTitles(ctx, sessionIds) {
  * Build every tool definition this plugin registers.
  * @param ctx - host context carrying the agent registry, tools, and optional services.
  * @param store - durable binding, guard, and handle store.
+ * @param options - configurable behavior; see the README's configuration table.
  * @returns the tool definitions to register.
  */
 export function createTools(ctx, store, options = {}) {
   const briefOnBind = options.briefOnBind !== false
   const messageForm = options.messageForm === 'notice' ? 'notice' : 'relay'
+  // First contact registers the target instead of refusing: see
+  // `registerMember` for why this widens no authority.
+  const autoBind = options.autoBind !== false
 
   /**
    * Hand one newly bound member the working agreement, without waking it.
@@ -164,6 +171,40 @@ export function createTools(ctx, store, options = {}) {
     } catch (error) {
       optional(ctx, 'logger')?.warn?.(`conversation-bindings: cannot brief member "${binding.target}": ${String(error)}`)
     }
+  }
+
+  /**
+   * Register one conversation as a member of `ownerId`, or refuse it.
+   *
+   * Both `conversation_bind` and first contact in `conversation_send` come
+   * through here, so the visibility fence, the default name, and the briefing
+   * cannot drift apart between the two entry points.
+   *
+   * This is not a permission gate and was never one: `conversation_bind` has
+   * always let any conversation register any conversation the human can see,
+   * asking the target nothing. What the edge buys is an explicit, durable,
+   * auditable record of who is talking to whom and a name to address it by —
+   * which is why registering on first contact widens no authority, it only
+   * removes a second call.
+   * @param ownerId - the conversation taking the member.
+   * @param target - target session id, already resolved from any handle.
+   * @param detail - member name (defaults to the target's handle), role, and note.
+   * @returns the stored binding.
+   * @throws when the target is one this workspace does not show, or the name is taken.
+   */
+  async function registerMember(ownerId, target, detail) {
+    if (!await isAddressable(ctx, target)) {
+      throw new Error(`conversation "${target}" is not one this workspace shows: `
+        + 'it is archived, still blank, or a subagent child. Ask the human to open it first.')
+    }
+    // The default name is minted only after the fence, so a refused target
+    // leaves no handle behind in the state file.
+    const name = typeof detail.name === 'string' && detail.name.length > 0
+      ? detail.name
+      : store.handleFor(target)
+    const binding = store.bind(ownerId, target, { ...detail, name })
+    briefMember(ownerId, binding)
+    return binding
   }
 
   return [
@@ -284,7 +325,8 @@ export function createTools(ctx, store, options = {}) {
     defineTool({
       name: 'conversation_bind',
       description: 'Register another conversation as a named member you supervise, so you can message it and set '
-        + 'guardrails on it. Binding is durable across restarts. Rebinding the same conversation updates its role.',
+        + 'guardrails on it. Binding is durable across restarts. Rebinding the same conversation updates its role. '
+        + 'conversation_send registers on first contact too, so bind up front only to choose the name and role.',
       parameters: {
         target: { type: 'string', required: true, description: 'Target conversation handle or session id, as returned by conversation_list.' },
         name: { type: 'string', required: true, description: 'Short member name you will address it by, unique among your members (for example "frontend").' },
@@ -308,17 +350,12 @@ export function createTools(ctx, store, options = {}) {
         const self = requireAgent(exec)
         const selfId = String(self.id)
         const target = store.byHandle(String(args.target)) ?? String(args.target)
-        if (target === String(self.id)) throw new Error('a conversation cannot bind itself')
-        if (!await isAddressable(ctx, target)) {
-          throw new Error(`conversation "${target}" is not one this workspace shows: `
-            + 'it is archived, still blank, or a subagent child. Ask the human to open it first.')
-        }
-        const binding = store.bind(selfId, target, {
+        if (target === selfId) throw new Error('a conversation cannot bind itself')
+        const binding = await registerMember(selfId, target, {
           name: String(args.name),
           ...(args.role === undefined ? {} : { role: String(args.role) }),
           ...(args.note === undefined ? {} : { note: String(args.note) }),
         })
-        briefMember(selfId, binding)
         return {
           ok: true,
           name: binding.name,
@@ -356,18 +393,20 @@ export function createTools(ctx, store, options = {}) {
 
     defineTool({
       name: 'conversation_send',
-      description: 'Send a message to another conversation. Supervisors reach their members by name or handle; a member '
-        + 'replies to a supervisor by that conversation\'s handle. Delivery modes: queue starts a new turn (default), '
-        + 'steer joins the target at its next step boundary, inject adds context without waking it.',
+      description: 'Send a message to another conversation: any conversation this workspace shows the human, or a member '
+        + 'of yours, or a supervisor of you. On first contact the target is registered as a member automatically (name it '
+        + 'with `name`, otherwise it is addressed by its handle afterwards). Delivery modes: queue starts a new turn '
+        + '(default), steer joins the target at its next step boundary, inject adds context without waking it.',
       parameters: {
-        target: { type: 'string', required: true, description: 'Member name, conversation handle, or the session id of a conversation that supervises you.' },
+        target: { type: 'string', required: true, description: 'Conversation handle or session id, a member name you registered, or the session id of a conversation that supervises you.' },
         message: { type: 'string', required: true, description: 'The message body the target model will read.' },
         mode: { type: 'string', enum: ['queue', 'steer', 'inject'], description: 'Delivery mode; defaults to queue.' },
+        name: { type: 'string', description: 'Member name to register the target under on first contact. Defaults to the target\'s handle; ignored when a relationship already exists.' },
       },
       output: {
         type: 'object',
         additionalProperties: false,
-        required: ['ok', 'handle', 'sessionId', 'mode', 'messageId', 'targetStatus', 'opened'],
+        required: ['ok', 'handle', 'sessionId', 'mode', 'messageId', 'targetStatus', 'opened', 'bound'],
         properties: {
           ok: { type: 'boolean' },
           handle: { type: 'string' },
@@ -376,14 +415,31 @@ export function createTools(ctx, store, options = {}) {
           messageId: { type: 'string' },
           targetStatus: { type: 'string' },
           opened: { type: 'boolean', description: 'True when the conversation was stored but closed, so it was opened to receive this message.' },
+          bound: { type: 'boolean', description: 'True when this call registered the target as a member on first contact.' },
         },
       },
       async run(args, exec) {
         const self = requireAgent(exec)
         const selfId = String(self.id)
-        const addressed = authorize(store, selfId, String(args.target))
+        const reference = String(args.target)
+        let addressed = authorize(store, selfId, reference)
+        let bound = false
         if (addressed === undefined) {
-          throw new Error(`conversation "${String(args.target)}" is neither a member you supervise nor a supervisor of yours. ${AUTHORIZE_HINT}`)
+          if (!autoBind) {
+            throw new Error(`conversation "${reference}" is neither a member you supervise nor a supervisor of yours. ${AUTHORIZE_HINT}`)
+          }
+          // First contact: register, then send — one call instead of two.
+          const target = store.byHandle(reference) ?? reference
+          if (target === selfId) throw new Error('a conversation cannot message itself')
+          const binding = await registerMember(selfId, target, {
+            ...(args.name === undefined ? {} : { name: String(args.name) }),
+          })
+          bound = true
+          addressed = {
+            sessionId: binding.target,
+            senderName: undefined,
+            relation: `you are supervised by this conversation as "${binding.name}"`,
+          }
         }
         if (!await isAddressable(ctx, addressed.sessionId)) {
           throw new Error(`conversation "${addressed.sessionId}" is not one this workspace shows: `
@@ -409,6 +465,7 @@ export function createTools(ctx, store, options = {}) {
           messageId,
           targetStatus: agent.status === 'running' ? 'running' : 'idle',
           opened,
+          bound,
         }
       },
     }),

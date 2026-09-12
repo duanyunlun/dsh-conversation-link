@@ -1,3 +1,6 @@
 node_modules/
 *.log
 .DS_Store
+
+# Local session memory (agent working notes) — never published.
+session/

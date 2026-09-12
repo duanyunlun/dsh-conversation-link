@@ -12,8 +12,10 @@
  *
  * Design rules this plugin holds to:
  *
- * - **Authorized addressing only.** A conversation may message a member it
- *   bound, or reply to a conversation that bound it. Nothing else.
+ * - **Addressing leaves a record.** A conversation may message a member it
+ *   bound, reply to a conversation that bound it, or reach any other
+ *   conversation this workspace shows the human — that first contact registers
+ *   it as a member, so every message still lands on a durable, auditable edge.
  * - **Audited message vocabulary.** Cross-conversation messages reuse the
  *   Harness's own `agent-message` source with the `relay` context form, so they
  *   carry a typed sender, render as a relay card, and need no Session format
@@ -176,6 +178,7 @@ export function apply(ctx, config = {}) {
   const definitions = createTools(ctx, store, {
     briefOnBind: config.briefOnBind !== false,
     messageForm,
+    autoBind: config.autoBind !== false,
   })
   for (const definition of definitions) {
     ctx.tools.register(definition)
