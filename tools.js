@@ -1,5 +1,5 @@
 /**
- * Model-facing tools of `dsh-conversation-bindings`.
+ * Model-facing tools of `dsh-conversation-link`.
  *
  * Seven tools cover the supervisor workflow: discover the conversations the
  * user opened, register them as named members, talk to them in both directions,
@@ -13,7 +13,7 @@
  * first-party `defineTool` helper draws the same line; this package cannot use
  * it because that would pull a Harness module into a zero-dependency plugin.
  *
- * @module dsh-conversation-bindings/tools
+ * @module dsh-conversation-link/tools
  */
 
 import { condense, deliver, frameBriefing, isAddressable, listConversations, openConversation, optional, projectStatus, spawnConversation } from './peers.js'
@@ -169,7 +169,7 @@ export function createTools(ctx, store, options = {}) {
         }),
       }, 'inject')
     } catch (error) {
-      optional(ctx, 'logger')?.warn?.(`conversation-bindings: cannot brief member "${binding.target}": ${String(error)}`)
+      optional(ctx, 'logger')?.warn?.(`conversation-link: cannot brief member "${binding.target}": ${String(error)}`)
     }
   }
 

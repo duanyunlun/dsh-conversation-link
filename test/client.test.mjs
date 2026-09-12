@@ -1,5 +1,5 @@
 /**
- * Wiring and DOM tests for the browser half of dsh-conversation-bindings.
+ * Wiring and DOM tests for the browser half of dsh-conversation-link.
  *
  * The half is a loader closure-factory artifact that promotes this plugin's
  * transcript rows into message cards by touching rendered markup. Two failure
@@ -186,7 +186,7 @@ async function loadClientHalf() {
  * part: clicking the header records an expansion that a later render performs,
  * exactly as the browser defers it.
  */
-function collapsedRow({ source = 'dsh-conversation-bindings', senderId = 'session-afbe616a-5e53-499a-88fe-4272445a6a57' } = {}) {
+function collapsedRow({ source = 'dsh-conversation-link', senderId = 'session-afbe616a-5e53-499a-88fe-4272445a6a57' } = {}) {
   const wrapper = new FakeElement('div', { 'data-open': '' })
   const header = new FakeElement('div', { 'data-disclosure-row': '', 'aria-expanded': 'false' })
   const label = new FakeElement('span', { 'data-context-source': '' })
@@ -224,8 +224,8 @@ function collapsedRow({ source = 'dsh-conversation-bindings', senderId = 'sessio
 
 test('the browser half registers under the package id', async () => {
   const { registration, exports } = await loadClientHalf()
-  assert.equal(registration.id, 'dsh-conversation-bindings')
-  assert.equal(exports.name, 'conversation-bindings')
+  assert.equal(registration.id, 'dsh-conversation-link')
+  assert.equal(exports.name, 'conversation-link')
   assert.deepEqual(exports.inject, ['sessions'])
   assert.equal(typeof exports.apply, 'function')
 })
@@ -236,7 +236,7 @@ test('applying the half injects its styles and watches the transcript', async ()
 
   const style = head.children[0]
   assert.ok(style !== undefined, 'one style element is injected')
-  assert.equal(style.getAttribute('data-plugin'), 'dsh-conversation-bindings')
+  assert.equal(style.getAttribute('data-plugin'), 'dsh-conversation-link')
   assert.match(style.textContent, /data-cb-peer-card/)
   assert.equal(observed.length, 1, 'the transcript is observed for added rows')
   assert.equal(observed[0].options.subtree, true)

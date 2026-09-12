@@ -1,8 +1,10 @@
-# dsh-conversation-bindings
+# dsh-conversation-link
 
 [English](README.en.md) | 中文
 
 > DeepSeek Harness 里，**对话与对话之间的通信、监工与护栏**。
+
+**让对话像同事一样互相说话。** 同一个 dsh 进程里的对话可以互相发现、直接发消息、盯着对方进度、给对方立规矩——不用先绑定，也不用套一层子代理。多对话协作、跨会话通信、监工与工具护栏，一个插件全包。
 
 Harness 本来就把每个打开过的对话都留在同一个进程里，也允许任何插件寻址任意活跃 agent；但它对外只提供了「父会话 → 子代理」这一条跨会话路径。这个插件补上横向的那条：一个对话可以发现平级对话、把它们登记成具名成员、双向收发消息、在不打扰对方的前提下看进度、自己开新的平级对话，并对成员的工具调用设护栏。
 
@@ -17,8 +19,8 @@ A 对话做总调度：在一个项目里开 B/C/D/E 四个功能对话（平级
 通过应用的插件管理器或 `dshpm` 安装（发布在 npm 与 GitHub 上）：
 
 ```
-dshpm install dsh-conversation-bindings --profile web
-dshpm install github:duanyunlun/dsh-conversation-bindings --profile web
+dshpm install dsh-conversation-link --profile web
+dshpm install github:duanyunlun/dsh-conversation-link --profile web
 ```
 
 装完**需要重启 DSH**：desktop host 不做 patch 热重载（`apps/desktop-host/src/index.ts` 不调用 `watchUserPatches`，只有 CLI 启动路径会）。
@@ -29,12 +31,12 @@ dshpm install github:duanyunlun/dsh-conversation-bindings --profile web
 
 ```yaml
 - insert:
-    - id: conversation-bindings
-      name: 'dsh-conversation-bindings'
+    - id: conversation-link
+      name: 'dsh-conversation-link'
 ```
 
 ```sh
-ln -sfn "$PWD" ~/.dsh/profiles/<profile>/node_modules/dsh-conversation-bindings
+ln -sfn "$PWD" ~/.dsh/profiles/<profile>/node_modules/dsh-conversation-link
 ```
 
 不要往 profile 的 `package.json` 里加依赖：桌面端只在 dsh 版本变化时重装 profile，且用 `pnpm install --offline --frozen-lockfile`——加了依赖而不更新 lockfile 会让那次安装失败。代价是 **dsh 升级后符号链接会丢**，要重新链一次。
@@ -195,9 +197,9 @@ A 设 `stage: "input"` + `text`。frontend 之后**每一轮**进入 step 前都
 在 profile 的 patch 行里覆盖：
 
 ```yaml
-- id: conversation-bindings
+- id: conversation-link
   config:
-    stateDir: ~/.dsh/conversation-bindings   # 状态文件目录（默认 $DSH_HOME/conversation-bindings）
+    stateDir: ~/.dsh/conversation-link   # 状态文件目录（默认 $DSH_HOME/conversation-link）
     briefOnBind: true                         # 绑定时向成员下发协作协议（默认 true）
     autoBind: true                            # 首次发送时自动把对方登记成成员（false = 必须先 conversation_bind）
     messageForm: relay                        # 消息形态：relay（客户端渲染成卡片）| notice（表头显示一行摘要）
@@ -208,7 +210,7 @@ A 设 `stage: "input"` + `text`。frontend 之后**每一轮**进入 step 前都
 
 ## 状态文件
 
-`$DSH_HOME/conversation-bindings/state.json`，原子写入：
+`$DSH_HOME/conversation-link/state.json`，原子写入：
 
 ```json
 {
@@ -222,13 +224,15 @@ A 设 `stage: "input"` + `text`。frontend 之后**每一轮**进入 step 前都
 
 删掉这个文件等于重置所有绑定、规则与 handle。
 
+**改名前的状态文件会继续被使用。** 这个插件在 0.3.0 之前叫 `dsh-conversation-bindings`，状态文件在 `$DSH_HOME/conversation-bindings/state.json`。改名不会让你丢掉已经攒下的 handle、绑定和规则：只要新目录下还没有 `state.json`，插件就继续读写旧路径那一份（**不复制、不迁移**，始终只有一份在生效）。想搬过去就自己 `mv`，想重置就删掉它。
+
 ## 测试
 
 ```sh
 node --test 'test/*.test.mjs'
 ```
 
-32 → **37 个用例**覆盖发现、handle 分配与稳定性、绑定与重绑、**首次接触自动登记（默认按对方 handle 命名、可用 `name` 显式命名、已有关系永不被改名、关掉 `autoBind` 后回到拒绝、自环被拒、被拒的目标连 handle 都不铸）**、双向投递与来源头、**回复路径的措辞（对监督者说「你监督这个对话」，而不是反过来说）**、未授权寻址被拒、投递模式、三阶段规则各自的命中与不命中、约束按轮去重、包装 `agent/pre-step` 时不破坏内层决策（含 `startsRequestSeries` 与 reject）、绑定时下发协作协议、进度投影、平级对话创建、冷会话发现（归档/空白/子代理/跨工作区过滤）、"列表即侧栏所见"这条不变式（归档后立刻不可寻址）、给未打开的对话发消息时按需打开、跨重挂载的持久化，以及 client 半区的装配与 DOM 行为（模块队列注册、样式注入、**折叠行的两阶段展开**、非本插件的行不动、监听与卸载）。
+32 → **38 个用例**覆盖发现、handle 分配与稳定性、绑定与重绑、**首次接触自动登记（默认按对方 handle 命名、可用 `name` 显式命名、已有关系永不被改名、关掉 `autoBind` 后回到拒绝、自环被拒、被拒的目标连 handle 都不铸）**、**改名前的状态文件继续生效（不复制、不迁移）**、双向投递与来源头、**回复路径的措辞（对监督者说「你监督这个对话」，而不是反过来说）**、未授权寻址被拒、投递模式、三阶段规则各自的命中与不命中、约束按轮去重、包装 `agent/pre-step` 时不破坏内层决策（含 `startsRequestSeries` 与 reject）、绑定时下发协作协议、进度投影、平级对话创建、冷会话发现（归档/空白/子代理/跨工作区过滤）、"列表即侧栏所见"这条不变式（归档后立刻不可寻址）、给未打开的对话发消息时按需打开、跨重挂载的持久化，以及 client 半区的装配与 DOM 行为（模块队列注册、样式注入、**折叠行的两阶段展开**、非本插件的行不动、监听与卸载）。
 
 其中"两阶段展开"那条是补写的回归测试：disclosure 的正文只在展开后渲染，而它是**表头（承载来源标签）的兄弟节点**——所以只扫描"新增节点"永远找不到它。第一版就是这么错的：展开后的第二次扫描匹配不到任何东西，卡片从不出现。
 

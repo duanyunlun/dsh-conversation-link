@@ -1,5 +1,5 @@
 /**
- * Behavior tests for dsh-conversation-bindings.
+ * Behavior tests for dsh-conversation-link.
  *
  * A fake Cordis context stands in for the Harness so the plugin's addressing,
  * delivery, guard, and persistence rules are exercised without a running
@@ -13,7 +13,7 @@
  * Run with `node --test 'test/*.test.mjs'`.
  */
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import assert from 'node:assert/strict'
@@ -101,7 +101,7 @@ function fakeContext(agents, supplied = {}) {
 
 /** Mount the plugin against a throwaway state directory. */
 function mount(config = {}, services = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'conversation-bindings-'))
+  const dir = mkdtempSync(join(tmpdir(), 'conversation-link-'))
   const a = new FakeAgent('session-a', '/repo')
   const b = new FakeAgent('session-b', '/repo')
   const c = new FakeAgent('session-c', '/repo')
@@ -227,7 +227,7 @@ test('delivered messages carry relay attribution and reply addressing', async (t
   // `relay` is what the bundled client half promotes into a message card; the
   // source stays a plain plugin source and carries the sender for it.
   assert.equal(message.source.kind, 'plugin')
-  assert.equal(message.source.plugin, 'dsh-conversation-bindings')
+  assert.equal(message.source.plugin, 'dsh-conversation-link')
   assert.equal(message.source.form, 'relay')
   assert.equal(message.source.senderSessionId, 'session-a')
   assert.match(message.source.summary, /^[a-z]+-[a-z]+ → Ship the login form\.$/)
@@ -754,7 +754,7 @@ test('messaging a closed conversation opens it first', async (t) => {
 })
 
 test('bindings, guards, and handles survive a remount', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'conversation-bindings-'))
+  const dir = mkdtempSync(join(tmpdir(), 'conversation-link-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
   const a = new FakeAgent('session-a', '/repo')
   const b = new FakeAgent('session-b', '/repo')
@@ -775,6 +775,39 @@ test('bindings, guards, and handles survive a remount', async (t) => {
   const guards = await call(second.toolsRegistry, 'conversation_guard', { action: 'list' }, a)
   assert.equal(guards.guards.length, 1)
   assert.equal(guards.guards[0].tool, 'bash')
+})
+
+test('a state file written under the pre-rename name keeps being used', async (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'conversation-link-home-'))
+  const legacy = join(home, 'conversation-bindings')
+  mkdirSync(legacy, { recursive: true })
+  writeFileSync(join(legacy, 'state.json'), `${JSON.stringify({
+    version: 1,
+    handles: { 'session-a': 'amber-otter' },
+    bindings: [{ owner: 'session-a', name: 'frontend', target: 'session-b', role: '', note: '', createdAt: 1 }],
+    guards: [],
+  })}\n`)
+  const previous = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+  t.after(() => {
+    if (previous === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previous
+    rmSync(home, { recursive: true, force: true })
+  })
+
+  // No explicit stateDir: this is the deployment-default path resolution, the
+  // one a rename could silently orphan.
+  const { tools, a, dir } = mount({ stateDir: undefined })
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const listed = await call(tools, 'conversation_list', {}, a)
+  assert.equal(listed.selfHandle, 'amber-otter')
+  assert.deepEqual(listed.members.map(member => member.name), ['frontend'])
+
+  // Nothing is copied or migrated: the old file stays the single live one.
+  const sent = await call(tools, 'conversation_send', { target: 'frontend', message: 'Still here?' }, a)
+  assert.equal(sent.ok, true)
+  assert.equal(existsSync(join(home, 'conversation-link', 'state.json')), false)
+  assert.equal(JSON.parse(readFileSync(join(legacy, 'state.json'), 'utf8')).handles['session-a'], 'amber-otter')
 })
 
 test('unbinding removes the member and its guardrails', async (t) => {

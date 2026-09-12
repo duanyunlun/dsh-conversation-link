@@ -1,5 +1,5 @@
 /**
- * `dsh-conversation-bindings` — peer conversation communication, supervision,
+ * `dsh-conversation-link` — peer conversation communication, supervision,
  * and tool guardrails inside one Harness process.
  *
  * The Harness already keeps every conversation it opened alive in one process
@@ -25,10 +25,10 @@
  * - **Guards fail open, loudly.** A guard decision is policy, not transport: a
  *   defect in this plugin must never break an unrelated conversation's work.
  *
- * @module dsh-conversation-bindings
+ * @module dsh-conversation-link
  */
 
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { BindingStore } from './store.js'
@@ -36,7 +36,7 @@ import { condense, deliver, optional, relayMessage, relaySummary } from './peers
 import { createTools } from './tools.js'
 
 /** Cordis plugin name. */
-export const name = 'conversation-bindings'
+export const name = 'conversation-link'
 
 /** Services this plugin needs before it mounts. */
 export const inject = ['agents', 'tools']
@@ -54,6 +54,13 @@ function expandHome(value) {
 
 /**
  * Resolve the durable state file for this deployment.
+ *
+ * The plugin was named `dsh-conversation-bindings` until 0.3.0, and the state
+ * file it wrote is the conversation graph itself: handles, bindings, and rules
+ * a user has already accumulated. Renaming the plugin must not orphan them, so
+ * a state file left under the old directory keeps being used until one exists
+ * under the current name. Nothing is copied or rewritten — the old path stays
+ * the live one, so there is exactly one state file to reason about.
  * @param config - plugin config.
  * @returns the absolute state file path.
  */
@@ -64,7 +71,10 @@ function resolveStateFile(config) {
   const home = process.env.DSH_HOME !== undefined && process.env.DSH_HOME.length > 0
     ? process.env.DSH_HOME
     : join(homedir(), '.dsh')
-  return join(home, 'conversation-bindings', 'state.json')
+  const current = join(home, 'conversation-link', 'state.json')
+  const legacy = join(home, 'conversation-bindings', 'state.json')
+  if (!existsSync(current) && existsSync(legacy)) return legacy
+  return current
 }
 
 /**
@@ -87,7 +97,7 @@ function recordMount(stateFile, toolCount) {
       pid: process.pid,
       node: process.version,
       tools: toolCount,
-      plugin: 'dsh-conversation-bindings',
+      plugin: 'dsh-conversation-link',
     }, null, 2)}\n`, 'utf8')
   } catch {
     // Diagnostics must never fail the mount.
@@ -197,7 +207,7 @@ export function apply(ctx, config = {}) {
     } catch (error) {
       // Rules are policy on top of the pipeline; an internal defect must not
       // block a call the Harness would otherwise allow.
-      optional(ctx, 'logger')?.warn?.(`conversation-bindings: rule check failed: ${String(error)}`)
+      optional(ctx, 'logger')?.warn?.(`conversation-link: rule check failed: ${String(error)}`)
       return next()
     }
     if (rule === undefined) return next()
@@ -221,7 +231,7 @@ export function apply(ctx, config = {}) {
         serializeResult(result),
       )
     } catch (error) {
-      optional(ctx, 'logger')?.warn?.(`conversation-bindings: result rule check failed: ${String(error)}`)
+      optional(ctx, 'logger')?.warn?.(`conversation-link: result rule check failed: ${String(error)}`)
       return decision
     }
     if (rule === undefined) return decision
@@ -273,7 +283,7 @@ export function apply(ctx, config = {}) {
     } catch (error) {
       // A constraint is advisory context; failing to add it must never stop the
       // member's step from entering.
-      optional(ctx, 'logger')?.warn?.(`conversation-bindings: constraint injection failed: ${String(error)}`)
+      optional(ctx, 'logger')?.warn?.(`conversation-link: constraint injection failed: ${String(error)}`)
       return decision
     }
   })
@@ -345,6 +355,6 @@ function notifySupervisor(ctx, store, rule, exec, mode, cooldownMs, lastNotified
         + `Arguments: ${condense(serializeArguments(exec.arguments), 300)}`,
     }, mode === 'queue' ? 'queue' : 'inject')
   } catch (error) {
-    optional(ctx, 'logger')?.warn?.(`conversation-bindings: cannot notify supervisor "${rule.owner}": ${String(error)}`)
+    optional(ctx, 'logger')?.warn?.(`conversation-link: cannot notify supervisor "${rule.owner}": ${String(error)}`)
   }
 }

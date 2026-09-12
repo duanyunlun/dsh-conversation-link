@@ -1,5 +1,5 @@
 /**
- * `dsh-conversation-bindings` browser half.
+ * `dsh-conversation-link` browser half.
  *
  * A cross-conversation message is durable the moment the host half delivers it,
  * but the transcript renders every message whose `source.kind` is not `user` as
@@ -29,13 +29,13 @@
  */
 
 window.__ModuleLoader__.load({
-	id: 'dsh-conversation-bindings',
+	id: 'dsh-conversation-link',
 	factory: (require) => {
 		var module = { exports: {} }
 		var exports = module.exports
 
 		/** The `source.plugin` value that identifies this plugin's rows. */
-		const SOURCE_LABEL = 'dsh-conversation-bindings'
+		const SOURCE_LABEL = 'dsh-conversation-link'
 
 		/** Marks the wrapper whose disclosure header this half hides. */
 		const CARD_ATTR = 'data-cb-peer-card'
@@ -237,7 +237,7 @@ window.__ModuleLoader__.load({
 			})
 		}
 
-		exports.name = 'conversation-bindings'
+		exports.name = 'conversation-link'
 		exports.inject = ['sessions']
 		exports.apply = apply
 		return module.exports

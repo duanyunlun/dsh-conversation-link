@@ -1,7 +1,7 @@
 {
-  "name": "dsh-conversation-bindings",
+  "name": "dsh-conversation-link",
   "version": "0.2.0",
-  "description": "Peer communication, supervision, and tool guardrails between conversations in one DeepSeek Harness process.",
+  "description": "DeepSeek Harness（DSH）对话互通插件：让同一进程里的对话互相发现、直接发消息、盯进度、设护栏——不用先绑定，也不用开子代理。Peer messaging, supervision, and tool guardrails between conversations.",
   "keywords": [
     "deepseek",
     "deepseek-harness",
@@ -13,17 +13,21 @@
     "multi-agent",
     "cross-session",
     "conversation",
-    "supervisor"
+    "conversation-link",
+    "peer-messaging",
+    "supervisor",
+    "supervision",
+    "guardrails"
   ],
   "license": "MIT",
   "author": "duanyunlun",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/duanyunlun/dsh-conversation-bindings.git"
+    "url": "git+https://github.com/duanyunlun/dsh-conversation-link.git"
   },
-  "homepage": "https://github.com/duanyunlun/dsh-conversation-bindings#readme",
+  "homepage": "https://github.com/duanyunlun/dsh-conversation-link#readme",
   "bugs": {
-    "url": "https://github.com/duanyunlun/dsh-conversation-bindings/issues"
+    "url": "https://github.com/duanyunlun/dsh-conversation-link/issues"
   },
   "type": "module",
   "exports": {

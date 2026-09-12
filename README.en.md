@@ -1,8 +1,10 @@
-# dsh-conversation-bindings
+# dsh-conversation-link
 
 [中文](README.md) | English
 
 > Peer communication, supervision, and tool guardrails **between conversations** inside one DeepSeek Harness process.
+
+**Let your conversations talk to each other.** Conversations inside one dsh process can discover each other, send messages directly, watch progress, and set rules for one another — no binding step first, and no subagent layer in between.
 
 DeepSeek Harness keeps every conversation it has opened alive in one process, and any plugin can already address any live agent — but the only cross-conversation path it ships is parent → subagent. This plugin adds the horizontal one: a coordinating conversation discovers its peers, registers them as named members, exchanges messages both ways, watches progress without interrupting, opens new peer conversations of its own, and sets guardrails on a member's tool calls.
 
@@ -17,8 +19,8 @@ Conversation A coordinates: open B/C/D/E as peers (not subagents) in one project
 Through the application's plugin manager or `dshpm` (published on npm and GitHub):
 
 ```
-dshpm install dsh-conversation-bindings --profile web
-dshpm install github:duanyunlun/dsh-conversation-bindings --profile web
+dshpm install dsh-conversation-link --profile web
+dshpm install github:duanyunlun/dsh-conversation-link --profile web
 ```
 
 Restart the app afterwards: the desktop host does not hot-reload the profile patch layer.

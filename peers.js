@@ -1,13 +1,13 @@
 /**
  * Peer discovery, message framing, delivery, and read-only status projection
- * for `dsh-conversation-bindings`.
+ * for `dsh-conversation-link`.
  *
  * Everything here works on conversations that are live in this process. The
  * Harness keeps an agent alive until the process exits, so a conversation the
  * user opened — and any conversation this plugin created — stays addressable
  * without resuming anything from storage.
  *
- * @module dsh-conversation-bindings/peers
+ * @module dsh-conversation-link/peers
  */
 
 import { randomUUID } from 'node:crypto'
@@ -99,7 +99,7 @@ export async function listConversations(ctx, options) {
       const value = await controller.list({}, new AbortController().signal)
       items = value?.items ?? []
     } catch (error) {
-      optional(ctx, 'logger')?.warn?.(`conversation-bindings: cannot list sessions: ${String(error)}`)
+      optional(ctx, 'logger')?.warn?.(`conversation-link: cannot list sessions: ${String(error)}`)
     }
     for (const item of items) {
       const live = ctx.agents.get(String(item.sessionId))
@@ -139,7 +139,7 @@ export async function listConversations(ctx, options) {
     } catch (error) {
       // A corpus read failure narrows the listing to the live conversations
       // rather than failing the tool a supervisor uses to find anyone at all.
-      optional(ctx, 'logger')?.warn?.(`conversation-bindings: cannot list stored sessions: ${String(error)}`)
+      optional(ctx, 'logger')?.warn?.(`conversation-link: cannot list stored sessions: ${String(error)}`)
     }
     for (const record of records) {
       const header = record?.header
@@ -275,7 +275,7 @@ export function relayMessage(detail) {
     content: Object.freeze([{ type: 'text', text: detail.text }]),
     source: Object.freeze({
       kind: 'plugin',
-      plugin: 'dsh-conversation-bindings',
+      plugin: 'dsh-conversation-link',
       form: detail.form === 'notice' ? 'notice' : 'relay',
       summary: detail.summary,
       senderSessionId: detail.senderId,

@@ -1,12 +1,12 @@
 /**
- * Durable binding and guard state for `dsh-conversation-bindings`.
+ * Durable binding and guard state for `dsh-conversation-link`.
  *
  * Bindings and guards are host-side facts about who may talk to whom and what a
  * supervisor has forbidden, so they live outside any one conversation's log:
  * one JSON file under the Harness home, rewritten atomically. A conversation
  * that is closed, resumed, or renamed keeps its place in the graph.
  *
- * @module dsh-conversation-bindings/store
+ * @module dsh-conversation-link/store
  */
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -133,11 +133,11 @@ export class BindingStore {
     try {
       parsed = asRecord(JSON.parse(raw))
     } catch (error) {
-      this.#logger?.warn?.(`conversation-bindings: ignoring unreadable state file ${this.#file}: ${String(error)}`)
+      this.#logger?.warn?.(`conversation-link: ignoring unreadable state file ${this.#file}: ${String(error)}`)
       return this.#state
     }
     if (parsed === undefined || parsed.version !== STATE_VERSION) {
-      this.#logger?.warn?.(`conversation-bindings: ignoring state file ${this.#file} with an unsupported version`)
+      this.#logger?.warn?.(`conversation-link: ignoring state file ${this.#file} with an unsupported version`)
       return this.#state
     }
     const bindings = Array.isArray(parsed.bindings) ? parsed.bindings : []
@@ -163,7 +163,7 @@ export class BindingStore {
       writeFileSync(temporary, `${JSON.stringify(state, null, 2)}\n`, 'utf8')
       renameSync(temporary, this.#file)
     } catch (error) {
-      this.#logger?.warn?.(`conversation-bindings: cannot persist bindings to ${this.#file}: ${String(error)}`)
+      this.#logger?.warn?.(`conversation-link: cannot persist bindings to ${this.#file}: ${String(error)}`)
     }
   }
 
