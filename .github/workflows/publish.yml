@@ -1,0 +1,64 @@
+# Publish to npm when package.json declares a version npm does not have yet.
+#
+# package.json is the single source of truth: bump the version and push to main,
+# and this workflow publishes exactly that version. Pushing without a version
+# change does nothing, so ordinary work cannot republish by accident. No tag and
+# no manual step is involved.
+#
+# Authentication, pick one:
+#
+#   1. Repository secret `NPM_TOKEN` — an npm *Automation* token (or a Granular
+#      access token with publish permission). Both bypass the interactive 2FA
+#      prompt, which is why CI needs one of them rather than the login session.
+#   2. Trusted publishing, no secret: register this repository and this workflow
+#      as a trusted publisher for the package on npmjs.com, then delete the
+#      NODE_AUTH_TOKEN line below. The `id-token: write` permission it needs is
+#      already granted here.
+name: publish
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run the plugin's tests
+        run: node --test 'test/*.test.mjs'
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs a newer npm than the runner image ships.
+      - run: npm install --global npm@latest
+      - name: Publish the declared version when npm does not have it
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          # An unset secret arrives as an empty string, which npm would treat as
+          # a bad credential instead of falling back to OIDC.
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then unset NODE_AUTH_TOKEN; fi
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "${name}@${version}" version >/dev/null 2>&1; then
+            echo "${name}@${version} is already on npm; nothing to publish."
+            exit 0
+          fi
+          npm publish --access public --provenance
