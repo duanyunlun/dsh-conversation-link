@@ -18,7 +18,7 @@ const NOTICE_SUMMARY_LIMIT = 118
 /** Longest text kept from one projected message. */
 const PROJECTION_TEXT_LIMIT = 400
 
-/** Longest member summary kept for one conversation. */
+/** Longest peer summary kept for one conversation. */
 const SUMMARY_LIMIT = 240
 
 /** Collapse whitespace and truncate for a model-facing one-line summary. */
@@ -57,8 +57,8 @@ export function optional(ctx, name) {
  * Every conversation the caller may address: the ones already live in this
  * process plus the ones this workspace has on disk, minus archived ones.
  *
- * Listing only live conversations would make a supervisor useless after a
- * restart — every member would stay invisible until a human clicked it open.
+ * Listing only live conversations would make a link useless after a restart —
+ * every peer would stay invisible until a human clicked it open.
  * A conversation the user has not archived is addressable whether or not an
  * agent currently holds it; delivery opens it on demand.
  * @param ctx - host context carrying the agent registry, session query, and workspace registry.
@@ -138,7 +138,7 @@ export async function listConversations(ctx, options) {
       records = await query.listSessions()
     } catch (error) {
       // A corpus read failure narrows the listing to the live conversations
-      // rather than failing the tool a supervisor uses to find anyone at all.
+      // rather than failing the tool a conversation uses to find anyone at all.
       optional(ctx, 'logger')?.warn?.(`conversation-link: cannot list stored sessions: ${String(error)}`)
     }
     for (const record of records) {
@@ -174,7 +174,7 @@ function scopeAndSort(found, options) {
 /**
  * Whether one conversation is addressable at all, in any workspace.
  *
- * Sending and binding consult this so a conversation the human cannot see is
+ * Sending and linking consult this so a conversation the human cannot see is
  * never a target, whichever tool names it.
  * @param ctx - host context.
  * @param sessionId - durable conversation identity.
@@ -228,18 +228,18 @@ function pendingCount(agent) {
  *
  * The header is machine-readable so the receiver can address a reply without
  * guessing, and it repeats the durable attribution that already travels in the
- * message source. Every conversation is named by its stable handle, so a reply
- * never requires repeating a UUID.
- * @param detail - sender identity, both handles, relationship, and message body.
+ * message source. There is no role line: a peer is named by whoever linked it,
+ * so the head carries that nickname when the recipient has one, and the
+ * sender's handle otherwise — both of which `conversation_send` accepts.
+ * @param detail - sender identity, both handles, and message body.
  * @returns the model-facing message text.
  */
 export function frameMessage(detail) {
   const label = detail.senderName === undefined
     ? `${detail.senderHandle} (${detail.senderId})`
-    : `${detail.senderName} / ${detail.senderHandle} (${detail.senderId})`
-  const lines = [`[conversation message from ${label}]`]
+    : `${detail.senderName} (${detail.senderHandle})`
+  const lines = [`[message from ${label}]`]
   if (detail.recipientHandle !== undefined) lines.push(`[your handle is ${detail.recipientHandle}]`)
-  if (detail.relation !== undefined) lines.push(`[relationship: ${detail.relation}]`)
   lines.push('', detail.body, '')
   lines.push(`[Reply with conversation_send target="${detail.senderHandle}" when a reply is needed.]`)
   return lines.join('\n')
@@ -350,30 +350,29 @@ export function deliver(agent, detail, mode) {
 }
 
 /**
- * Frame the working agreement one conversation hands a member it just bound.
+ * Frame the introduction one conversation hands a peer whose link it just made.
  *
- * This is the consultation protocol: a member learns who supervises it, that
- * asking costs less than guessing, and how to report. It carries no
- * enforcement — the rules that do are separate and deliberately few, because a
- * peer that can veto every keystroke is a controller, not a peer.
- * @param detail - supervisor identity, member name and role, and reply address.
+ * This is a courtesy notice, not an agreement about authority: it tells the
+ * peer which name it was given, who gave it, and that asking costs less than
+ * guessing. Nothing here is enforced — the rules that are belong to the peer
+ * itself.
+ * @param detail - the linking conversation's identity, the nickname it chose, and the reply address.
  * @returns the model-facing briefing text.
  */
 export function frameBriefing(detail) {
-  const role = detail.role.length > 0 ? ` (${detail.role})` : ''
   return [
-    `[working agreement from your supervising conversation ${detail.supervisorHandle} (${detail.supervisorId})]`,
+    `[a peer conversation introduced itself: ${detail.peerHandle} (${detail.peerId})]`,
     '',
-    `You are registered as member "${detail.name}"${role}.`,
+    `It will address you as "${detail.name}".`,
     '',
-    'How to work with this supervisor:',
+    'How to work with it:',
     '- When an interface, field name, file ownership, or cross-module change is unclear, ask first: '
-      + `conversation_send target="${detail.supervisorHandle}". Guessing costs more than asking.`,
+      + `conversation_send target="${detail.peerHandle}". Guessing costs more than asking.`,
     '- Say what you intend before a change that reaches outside your own area.',
     '- When a stage of work is done, report the progress and how you verified it.',
-    '- When the supervisor sends you something, act on it — and say so if it conflicts with what you know.',
+    '- When it sends you something, act on it — and say so if it conflicts with what you know.',
     '',
-    `[Reply with conversation_send target="${detail.supervisorHandle}".]`,
+    `[Reply with conversation_send target="${detail.peerHandle}".]`,
     '[Delivery is automatic: the message reaches a running conversation at its next step boundary, '
       + 'and an idle one as a fresh turn. Pass mode "queue" only when the message should wait for the '
       + 'conversation\'s current work to finish.]',

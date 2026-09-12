@@ -1,28 +1,34 @@
 /**
- * `dsh-conversation-link` — peer conversation communication, supervision,
- * and tool guardrails inside one Harness process.
+ * `dsh-conversation-link` — peer conversation communication and self-declared
+ * standing rules inside one Harness process.
  *
  * The Harness already keeps every conversation it opened alive in one process
  * and already lets any plugin address any live agent, but the only shipped
  * cross-conversation path is parent-to-child delegation. This plugin adds the
- * horizontal path: a supervisor conversation discovers its peers, registers
- * them as named members, exchanges messages in both directions, watches their
- * progress, opens new peers of its own, and refuses a member's tool calls that
- * violate a guardrail it set.
+ * horizontal path: any conversation discovers its peers, links them under
+ * nicknames it chooses, exchanges messages in both directions, watches their
+ * progress, opens new peers of its own, and declares rules for its own tool
+ * calls.
+ *
+ * There is deliberately no role in this model. A link is a name, not an
+ * authority: nothing here makes one conversation the supervisor of another.
+ * The one enforcing mechanism — a rule — binds the conversation that declares
+ * it, so a conversation's constraints on itself are the only constraints this
+ * plugin can apply.
  *
  * Design rules this plugin holds to:
  *
- * - **Addressing leaves a record.** A conversation may message a member it
- *   bound, reply to a conversation that bound it, or reach any other
- *   conversation this workspace shows the human — that first contact registers
- *   it as a member, so every message still lands on a durable, auditable edge.
+ * - **Addressing leaves a record.** A conversation may message a peer it
+ *   linked, reply to a conversation that linked it, or reach any other
+ *   conversation this workspace shows the human — that first contact links it,
+ *   so every message still lands on a durable, auditable edge.
  * - **Audited message vocabulary.** Cross-conversation messages reuse the
  *   Harness's own `agent-message` source with the `relay` context form, so they
  *   carry a typed sender, render as a relay card, and need no Session format
  *   change.
  * - **No hidden loop.** Nothing is forwarded automatically. Every message is an
  *   explicit tool call, so two conversations cannot wake each other forever.
- * - **Guards fail open, loudly.** A guard decision is policy, not transport: a
+ * - **Rules fail open, loudly.** A rule decision is policy, not transport: a
  *   defect in this plugin must never break an unrelated conversation's work.
  *
  * @module dsh-conversation-link
@@ -44,7 +50,7 @@ export const inject = ['agents', 'tools']
 /** Guard notifications are quiet by default: they land in the next admitted step. */
 const DEFAULT_NOTIFY = 'inject'
 
-/** Minimum gap between two guard notifications for the same rule. */
+/** Minimum gap between two rule notifications for the same rule. */
 const DEFAULT_NOTIFY_COOLDOWN_MS = 10_000
 
 /** Expand a leading `~` in one configured path. */
@@ -56,7 +62,7 @@ function expandHome(value) {
  * Resolve the durable state file for this deployment.
  *
  * The plugin was named `dsh-conversation-bindings` until 0.3.0, and the state
- * file it wrote is the conversation graph itself: handles, bindings, and rules
+ * file it wrote is the conversation graph itself: handles, links, and rules
  * a user has already accumulated. Renaming the plugin must not orphan them, so
  * a state file left under the old directory keeps being used until one exists
  * under the current name. Nothing is copied or rewritten — the old path stays
@@ -104,7 +110,7 @@ function recordMount(stateFile, toolCount) {
   }
 }
 
-/** Serialize call arguments for matching without letting a hostile value trap the guard. */
+/** Serialize call arguments for matching without letting a hostile value trap the rule. */
 function serializeArguments(value) {
   try {
     return JSON.stringify(value) ?? ''
@@ -115,7 +121,7 @@ function serializeArguments(value) {
   }
 }
 
-/** Test one configured guard selector against serialized call arguments. */
+/** Test one configured rule selector against serialized call arguments. */
 function matchArguments(selector, serialized) {
   if (selector.length === 0) return true
   if (selector.length > 2 && selector.startsWith('/')) {
@@ -125,7 +131,7 @@ function matchArguments(selector, serialized) {
         return new RegExp(selector.slice(1, end), selector.slice(end + 1)).test(serialized)
       } catch {
         // An unusable regular expression falls through to the literal test so a
-        // typo narrows the guard instead of silently disabling it.
+        // typo narrows the rule instead of silently disabling it.
       }
     }
   }
@@ -167,6 +173,14 @@ function serializeMessages(messages) {
 export function apply(ctx, config = {}) {
   const stateFile = resolveStateFile(config)
   const store = new BindingStore({ file: stateFile, logger: optional(ctx, 'logger') })
+  // Touch the store so a version 1 file is migrated at mount rather than at the
+  // first tool call: a deployment that mounts and is never talked to would
+  // otherwise leave the old shape on disk for an older plugin version to read.
+  try {
+    store.handles()
+  } catch (error) {
+    optional(ctx, 'logger')?.warn?.(`conversation-link: cannot load state ${stateFile}: ${String(error)}`)
+  }
   const notifyMode = typeof config.notify === 'string' ? config.notify : DEFAULT_NOTIFY
   const cooldownMs = Number.isFinite(config.notifyCooldownMs)
     ? Number(config.notifyCooldownMs)
@@ -186,9 +200,9 @@ export function apply(ctx, config = {}) {
 
   const messageForm = config.messageForm === 'notice' ? 'notice' : 'relay'
   const definitions = createTools(ctx, store, {
-    briefOnBind: config.briefOnBind !== false,
+    briefOnLink: config.briefOnLink !== false,
     messageForm,
-    autoBind: config.autoBind !== false,
+    autoLink: config.autoLink !== false,
   })
   for (const definition of definitions) {
     ctx.tools.register(definition)
@@ -211,8 +225,8 @@ export function apply(ctx, config = {}) {
       return next()
     }
     if (rule === undefined) return next()
-    notifySupervisor(ctx, store, rule, exec, notifyMode, cooldownMs, lastNotified, 'blocked')
-    return { kind: 'deny', reason: `Blocked by supervising conversation: ${rule.reason}` }
+    notifyRuleOwner(ctx, store, rule, exec, notifyMode, cooldownMs, lastNotified, 'blocked')
+    return { kind: 'deny', reason: `Blocked by a standing rule of this conversation: ${rule.reason}` }
   })
 
   // Stage `after`: turn a completed result into corrective feedback. The inner
@@ -235,20 +249,21 @@ export function apply(ctx, config = {}) {
       return decision
     }
     if (rule === undefined) return decision
-    notifySupervisor(ctx, store, rule, exec, notifyMode, cooldownMs, lastNotified, 'rejected the result of')
+    notifyRuleOwner(ctx, store, rule, exec, notifyMode, cooldownMs, lastNotified, 'rejected the result of')
     return {
       kind: 'block',
       feedback: [{
         type: 'text',
-        text: `Rejected by supervising conversation: ${rule.reason}\n`
+        text: `Rejected by a standing rule of this conversation: ${rule.reason}\n`
           + 'The result above was discarded. Correct the problem and call the tool again.',
       }],
     }
   })
 
   // Stage `input`: assert a standing constraint on the messages entering a step.
-  // A constraint is a real message with relay provenance, so the member's model
-  // and the human reading that conversation both see who imposed it.
+  // A constraint is a real message with relay provenance, so the conversation's
+  // model and the human reading it both see that it is the conversation's own
+  // declared rule rather than something another conversation imposed.
   ctx.on('agent/pre-step', async (payload, next) => {
     const decision = await next()
     try {
@@ -274,15 +289,14 @@ export function apply(ctx, config = {}) {
                 senderHandle,
                 body: `standing constraint: ${rule.text}`,
               }),
-              text: `[standing constraint from your supervising conversation `
-                + `${senderHandle} (${rule.owner})]\n\n${rule.text}`,
+              text: `[your standing rule (declared here, ${senderHandle})]\n\n${rule.text}`,
             })
           }),
         ],
       }
     } catch (error) {
       // A constraint is advisory context; failing to add it must never stop the
-      // member's step from entering.
+      // conversation's step from entering.
       optional(ctx, 'logger')?.warn?.(`conversation-link: constraint injection failed: ${String(error)}`)
       return decision
     }
@@ -302,7 +316,7 @@ export function apply(ctx, config = {}) {
  * Whether one constraint rule may be asserted again now.
  *
  * A `turn` rule is restated once per turn so it stays near the end of the
- * member's context without repeating on every step; a `session` rule is
+ * conversation's context without repeating on every step; a `session` rule is
  * asserted once and then left in the transcript. This tracking is process-local,
  * so a restart restates each rule at most once more.
  * @param rule - the constraint rule.
@@ -322,39 +336,43 @@ function constraintDue(rule, turn, state) {
 }
 
 /**
- * Tell the supervising conversation that one of its rules fired.
+ * Tell a conversation that one of its own declared rules fired.
  *
- * The notification never wakes an idle supervisor unless `notify` selects
- * `queue`: a rule firing is information, not a reason to spend a turn.
+ * The notice goes to the conversation the rule belongs to, never to a third
+ * party: with no roles in the model there is nobody else it could concern. It
+ * never wakes an idle conversation — a rule firing is information, not a reason
+ * to spend a turn.
  * @param ctx - host context.
- * @param store - rule and handle store, for sender addressing.
+ * @param store - link and rule store, for handle addressing.
  * @param rule - the matched rule.
  * @param exec - the affected call.
- * @param mode - `inject`, `queue`, or `off`.
+ * @param mode - `self` or `off`.
  * @param cooldownMs - minimum gap between notifications for the same rule.
  * @param lastNotified - per-rule notification clock.
- * @param verb - what happened, phrased for the supervisor.
+ * @param verb - what happened, in the past tense.
  */
-function notifySupervisor(ctx, store, rule, exec, mode, cooldownMs, lastNotified, verb) {
-  if (mode === 'off') return
+function notifyRuleOwner(ctx, store, rule, exec, mode, cooldownMs, lastNotified, verb) {
+  if (mode === 'off' || rule.notify === 'off') return
   const now = Date.now()
   const previous = lastNotified.get(rule.id) ?? 0
   if (now - previous < cooldownMs) return
   lastNotified.set(rule.id, now)
-  const supervisor = ctx.agents.get(rule.owner)
-  if (supervisor === undefined) return
+  const owner = ctx.agents.get(rule.owner)
+  if (owner === undefined) return
   try {
-    deliver(supervisor, {
-      senderId: rule.target,
-      senderHandle: store.handleFor(rule.target),
-      recipientHandle: store.handleFor(rule.owner),
-      relation: `you supervise this conversation as "${rule.memberName ?? rule.target}"`,
-      body: `Rule fired: this conversation ${verb} tool "${exec.name}".\n`
+    // A migrated rule remembers who wrote it before the model had no roles, and
+    // says so; a self-declared one has no other party to name.
+    const author = typeof rule.level === 'string' && rule.level.length > 0 ? rule.level : undefined
+    deliver(owner, {
+      senderId: rule.owner,
+      senderHandle: store.handleFor(rule.owner),
+      ...(author === undefined ? {} : { senderName: store.handleFor(author) }),
+      body: `Your standing rule ${verb} tool "${exec.name}".\n`
         + `Rule: ${rule.stage}/${rule.tool}${rule.match.length > 0 ? ` matching ${rule.match}` : ''}\n`
-        + `Reason given to it: ${condense(rule.reason)}\n`
+        + (rule.reason.length > 0 ? `Reason you gave: ${condense(rule.reason)}\n` : '')
         + `Arguments: ${condense(serializeArguments(exec.arguments), 300)}`,
-    }, mode === 'queue' ? 'queue' : 'inject')
+    }, 'inject')
   } catch (error) {
-    optional(ctx, 'logger')?.warn?.(`conversation-link: cannot notify supervisor "${rule.owner}": ${String(error)}`)
+    optional(ctx, 'logger')?.warn?.(`conversation-link: cannot notify rule owner "${rule.owner}": ${String(error)}`)
   }
 }
