@@ -1,6 +1,6 @@
 {
   "name": "dsh-conversation-link",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "DeepSeek Harness（DSH）对话互通插件：让同一进程里的对话互相发现、直接发消息、盯进度、设护栏——不用先绑定，也不用开子代理。Peer messaging, supervision, and tool guardrails between conversations.",
   "keywords": [
     "deepseek",
