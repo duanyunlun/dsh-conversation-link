@@ -27,17 +27,19 @@ dshpm install github:duanyunlun/dsh-conversation-link --profile web
 
 Restart the app afterwards: the desktop host does not hot-reload the profile patch layer.
 
+This package declares `dsh.bundle.patch` (`./cordis.patch.yml`), so it is a **bundle layer**: a profile that installs it applies that patch through `dsh.profile.bundles` and gets the plugin row — which is how DSH Desktop's built-in community market and `dsh-web-plugin-manager` install it (the market's "installable" view only accepts packages that declare `dsh.bundle.patch`). A bundle row and a hand-written insert row in the profile must not coexist, or the plugin loads twice.
+
 ## Tools
 
 | Tool | Purpose |
 |---|---|
 | `conversation_list` | The conversations you can address, with their stable handles: exactly what this workspace shows the human, plus the conversations linked to you |
-| `conversation_link` | Register a conversation as a named link; hands it the working agreement automatically. Only needed to choose the name and role up front — first contact in `conversation_send` registers too |
-| `conversation_unlink` | Drop a link and the rules that ride on it |
-| `conversation_send` | Send a message to any conversation this workspace shows, or to a conversation linked to you; first contact registers the target as a link (`name` picks the name, the return value reports `bound`). Delivery defaults to `auto`: a **running** target is steered at its **next step boundary** instead of waiting for its turn to end, an **idle** one gets a fresh turn. Explicit `queue` / `steer` / `inject` still work, and the returned `mode` is where the message actually landed. A closed target is opened first |
+| `conversation_link` | Link a conversation under a nickname you choose and introduce yourself to it automatically. Only needed to pick the nickname yourself — first contact in `conversation_send` links too |
+| `conversation_unlink` | Drop a nickname you gave a conversation. The peer keeps running, and the rules it declared for itself stay in force |
+| `conversation_send` | Send a message to any conversation this workspace shows, or to a conversation linked to you; first contact links the target (`name` picks the nickname, the return value reports `linked`). Delivery defaults to `auto`: a **running** target is steered at its **next step boundary** instead of waiting for its turn to end, an **idle** one gets a fresh turn. Explicit `queue` / `steer` / `inject` still work, and the returned `mode` is where the message actually landed. A closed target is opened first |
 | `conversation_status` | Read a linked conversation's progress without waking it |
 | `conversation_spawn` | Open a new **peer** conversation, optionally linking it and handing it a first task |
-| `conversation_rule` | Rules in three stages: `before` refuses a call, `after` rejects a completed result with feedback, `input` asserts a standing constraint |
+| `conversation_rule` | Declare standing rules for **your own** tool calls (no parameter points at another conversation): `before` refuses a call, `after` rejects a completed result with feedback, `input` restates a constraint before a step |
 
 Address a linked conversation by name, by handle (`ivory-quartz`), or by session id.
 

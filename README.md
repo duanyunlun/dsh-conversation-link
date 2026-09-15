@@ -27,6 +27,8 @@ dshpm install github:duanyunlun/dsh-conversation-link --profile web
 
 装完**需要重启 DSH**：desktop host 不做 patch 热重载（`apps/desktop-host/src/index.ts` 不调用 `watchUserPatches`，只有 CLI 启动路径会）。
 
+本包声明了 `dsh.bundle.patch`（`./cordis.patch.yml`），所以它是一条 **bundle 层**：装它的 profile 通过 `dsh.profile.bundles` 自动应用这条 patch 并挂上插件行——DSH Desktop 自带的社区市场与 `dsh-web-plugin-manager` 都是这么装的（社区市场的「可安装」视图只接受声明了 `dsh.bundle.patch` 的包）。**bundle 行与 profile 里手写的 insert 行不能同时存在**，否则插件会被加载两次：手动挂载的 profile 不要把它列进 `bundles`，反之亦然。
+
 ### 本地开发（未发布时）
 
 把仓库链进 profile 的 `node_modules`，并在 profile 的 `cordis.patch.yml` 里加一条 insert 行：

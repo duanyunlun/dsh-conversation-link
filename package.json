@@ -41,11 +41,15 @@
     "store.js",
     "peers.js",
     "tools.js",
+    "cordis.patch.yml",
     "README.md",
     "README.en.md",
     "LICENSE"
   ],
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web"
     }

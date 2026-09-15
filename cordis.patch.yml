@@ -1,0 +1,15 @@
+# dsh-conversation-link: peer messaging and self-declared standing rules
+# between live conversations in one Harness process.
+#
+# This is the package's bundle layer: a profile that lists
+# `dsh-conversation-link` in `dsh.profile.bundles` applies it automatically,
+# which is how the plugin manager and the community market install it. The
+# browser half needs no row of its own — it is discovered through the
+# package.json `dsh.client` declaration.
+#
+# A profile that instead inserts the package by hand in its own
+# `cordis.patch.yml` must NOT also list it as a bundle: the row would load the
+# plugin twice.
+- insert:
+    - id: conversation-link
+      name: 'dsh-conversation-link'
