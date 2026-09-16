@@ -38,7 +38,7 @@ This package declares `dsh.bundle.patch` (`./cordis.patch.yml`), so it is a **bu
 | `conversation_unlink` | Drop a nickname you gave a conversation. The peer keeps running, and the rules it declared for itself stay in force |
 | `conversation_send` | Send a message to any conversation this workspace shows, or to a conversation linked to you; first contact links the target (`name` picks the nickname, the return value reports `linked`). Delivery defaults to `auto`: a **running** target is steered at its **next step boundary** instead of waiting for its turn to end, an **idle** one gets a fresh turn. Explicit `queue` / `steer` / `inject` still work, and the returned `mode` is where the message actually landed. A closed target is opened first |
 | `conversation_status` | Read a linked conversation's progress without waking it |
-| `conversation_spawn` | Open a new **peer** conversation, optionally linking it and handing it a first task |
+| `conversation_spawn` | Open a new **peer** conversation (`cwd` defaults to the caller's own working directory; the new conversation is then registered in the workspace that owns it), optionally linking it and handing it a first task |
 | `conversation_rule` | Declare standing rules for **your own** tool calls (no parameter points at another conversation): `before` refuses a call, `after` rejects a completed result with feedback, `input` restates a constraint before a step |
 
 Address a linked conversation by name, by handle (`ivory-quartz`), or by session id.

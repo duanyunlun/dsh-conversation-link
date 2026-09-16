@@ -644,6 +644,56 @@ test('conversation_spawn opens a peer, links it, and hands it the first task', a
   assert.match(spawned.delivered[0].message.content[0].text, /message from|Document the auth flow/)
 })
 
+test('a spawned conversation is attached to the workspace that owns its directory', async (t) => {
+  /** Roster the registry reads; the spawned conversation joins it. */
+  let roster
+  const attached = []
+  const { tools, a, dir, agents } = mount({}, {
+    createAgent: (options) => {
+      const agent = new FakeAgent(String(options.sessionId), '/repo')
+      roster.push(agent)
+      return { agent, dispose: () => Promise.resolve() }
+    },
+    // The Host only attaches a session it created by workspace id, so a
+    // cwd-named creation leaves the registry's durable account without it.
+    workspaceRegistry: {
+      archivedSessionIds: [],
+      resolveByPath: (path) => Promise.resolve(
+        path === '/repo' ? { path, attachSession: id => { attached.push(id); return Promise.resolve() } } : undefined),
+    },
+  })
+  roster = agents
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+
+  const value = await call(tools, 'conversation_spawn', { name: 'docs', prompt: 'Document it.' }, a)
+  assert.equal(value.ok, true)
+  assert.deepEqual(attached, [value.sessionId], 'the new conversation is registered in its workspace')
+
+  // A directory no workspace owns must stay a no-op: spawning never invents one.
+  const elsewhere = await call(tools, 'conversation_spawn', { cwd: '/tmp/elsewhere' }, a)
+  assert.equal(elsewhere.ok, true)
+  assert.deepEqual(attached, [value.sessionId], 'an unowned directory attaches nothing')
+})
+
+test('spawning still works where no workspace registry is mounted', async (t) => {
+  let roster
+  const { tools, a, dir, agents } = mount({}, {
+    createAgent: (options) => {
+      const agent = new FakeAgent(String(options.sessionId), '/repo')
+      roster.push(agent)
+      return { agent, dispose: () => Promise.resolve() }
+    },
+  })
+  roster = agents
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+
+  // The fake context throws for a service the plugin never declared, exactly as
+  // Cordis does, so this also proves the registry is read optionally.
+  const value = await call(tools, 'conversation_spawn', { name: 'docs' }, a)
+  assert.equal(value.ok, true)
+  assert.equal(value.linked, true)
+})
+
 test('the listing is exactly what the workspace shows the human', async (t) => {
   const { tools, a, dir } = mount({}, {
     sessionController: {

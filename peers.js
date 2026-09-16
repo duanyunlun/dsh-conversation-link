@@ -469,6 +469,41 @@ export async function projectStatus(ctx, sessionId, recent) {
 }
 
 /**
+ * Record a created conversation in the workspace that owns its directory.
+ *
+ * The Host session controller only attaches a session when it is created **by
+ * workspace id** (`session-controller/src/commands.ts`): a creation that names
+ * a `cwd` writes the log in the right directory but leaves the workspace
+ * registry's durable session account without it. Registering the same session
+ * afterwards closes that gap.
+ *
+ * This never invents a workspace. An unregistered directory, a path that no
+ * longer exists, and a composition without the registry all resolve to a
+ * no-op, so spawning stays exactly as available as it was.
+ * @param ctx - host context.
+ * @param sessionId - the conversation just created.
+ * @param cwd - the working directory it was created with, when one was named.
+ * @returns whether the session was attached to a workspace.
+ */
+async function attachToOwningWorkspace(ctx, sessionId, cwd) {
+  if (cwd === undefined) return false
+  const registry = optional(ctx, 'workspaceRegistry')
+  if (registry === undefined || typeof registry.resolveByPath !== 'function') return false
+  try {
+    const workspace = await registry.resolveByPath(cwd)
+    if (workspace === undefined) return false
+    await workspace.attachSession(sessionId)
+    return true
+  } catch (error) {
+    // Bookkeeping, not creation: a workspace that cannot account for the
+    // session must not take the session — or the tool call — down with it.
+    optional(ctx, 'logger')?.warn?.(
+      `conversation-link: session "${sessionId}" was created but not attached to its workspace: ${String(error)}`)
+    return false
+  }
+}
+
+/**
  * Create a new top-level conversation beside the caller.
  *
  * The Host session controller owns preset composition and workspace
@@ -485,7 +520,9 @@ export async function spawnConversation(ctx, options) {
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
       ...(options.preset === undefined ? {} : { agentPreset: options.preset }),
     })
-    return String(value.sessionId)
+    const sessionId = String(value.sessionId)
+    await attachToOwningWorkspace(ctx, sessionId, options.cwd)
+    return sessionId
   }
   const sessionId = `session-${randomUUID()}`
   const created = await ctx.agents.create({
@@ -493,5 +530,7 @@ export async function spawnConversation(ctx, options) {
     ...(options.cwd === undefined ? {} : { meta: { cwd: options.cwd } }),
     ...(options.agentOptions === undefined ? {} : { agentOptions: options.agentOptions }),
   })
-  return String(created.agent.id)
+  const createdId = String(created.agent.id)
+  await attachToOwningWorkspace(ctx, createdId, options.cwd)
+  return createdId
 }

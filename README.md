@@ -64,7 +64,7 @@ ln -sfn "$PWD" ~/.dsh/profiles/<profile>/node_modules/dsh-conversation-link
 | `conversation_unlink` | 断开连接（丢掉昵称）。对话本身照常运行，**它给自己声明的规则不受影响**——名字不是规则成立的前提 |
 | `conversation_send` | 发消息。目标可以是**本工作区侧栏可见的任何对话**，或与你相连的对话。**首次接触会在同一次调用里把对方连上**（`name` 指定昵称，默认用它的 handle；返回值 `linked: true` 表示这次建立了连接）。目标没打开时**自动打开再投递**（返回 `opened: true`）。投递默认 **`auto`**：对方**正在跑**就走 `steer`（插到它**下一个 step 边界**，不等它这一轮跑完），对方**空闲**就走 `queue`（给它干净的一轮）；也可显式指定 `queue` / `steer` / `inject`。返回值里的 `mode` 是**实际落点** |
 | `conversation_status` | 不打扰对方地读进度：当前 turn/step、最后的人类/助手文本、最近工具名、排队数。需要**已有连接**（你连过它，或它连过你） |
-| `conversation_spawn` | 开一个**平级**新对话（默认落在调用者自己的工作区，立刻出现在侧栏），可同时连上对方并派第一个任务 |
+| `conversation_spawn` | 开一个**平级**新对话（`cwd` 默认取调用者自己的工作目录，可指定别的；创建后会把它登记进拥有该目录的工作区），可同时连上对方并派第一个任务 |
 | `conversation_rule` | 给**自己**设/删/列常驻规则（`action: add \| remove \| list`，`stage: before \| after \| input`）。没有任何参数能指向别的对话——规则永远只约束声明它的那一个 |
 
 寻址三选一：你给的昵称、handle、session id。
@@ -194,6 +194,7 @@ The result above was discarded. Correct the problem and call the tool again.
 
 - **寻址等于可见**：能出现、也能被寻址的，只有侧栏会显示的那些对话。归档的、空白的、子代理一律不在列表里，也不能被发消息或连接。
 - **handle 还没进 GUI。** 人看到的是会话标题；handle 目前通过 `conversation_list` 可见。要在会话头部直接显示，需要加一个 client 半区插件。
+- **`conversation_spawn` 的目录与工作区登记。** Harness 的 `sessionController.create` 只在**按工作区 id 创建**时才把会话登记进工作区名册（`session-controller/src/commands.ts`）；按 `cwd` 创建虽然会把日志写进对应目录（会话存储按 cwd 分目录），名册里却不会多一条。所以本插件在创建后会自己补一次登记：按 `cwd` 规范化后找**已注册**的同名工作区并 `attachSession`。它**不会**替你新建工作区——目录没注册过就是空操作，行为和以前完全一样。
 - **连接就是最轻的那条边了。** 自动连接和 `conversation_link` 建立的是同一条记录：一个昵称加一行历史，**不带任何权限或义务**。规则完全不在连接上——它属于声明它的对话，所以「只想平级问答」不需要另一种边，现在的边本来就不带别的东西。
 - **`conversation_spawn` 的 preset。** 在有 Host session controller 的组合（web/desktop）里走 `sessionController.create`，preset 组合与 workspace 注册都由它负责；其他组合回退到 `ctx.agents.create`，此时新对话拿到的是宿主级组合。
 - **没有人在环审批，这是有意的。** Harness 自带的 `user-approval` 已经覆盖「危险动作问人类」，再叠一层只会让同一个调用弹两次。规则解决的是另一件事：**无人值守时也生效的项目规矩**（内置审批不知道 `packages/api` 意味着什么）。真需要人在环，把 `action` 换成 `ask` 即可复用现成审批通道，但需要先想清楚它是否与内置审批重复。
