@@ -193,6 +193,7 @@ The result above was discarded. Correct the problem and call the tool again.
 ## 已知边界
 
 - **寻址等于可见**：能出现、也能被寻址的，只有侧栏会显示的那些对话。归档的、空白的、子代理一律不在列表里，也不能被发消息或连接。
+- **删掉一个对话，这里也不留痕迹。** 删除动作由会话列表的动作插件负责，它会先发一个 `conversation/deleted`；本插件收到后会把该对话的 handle、昵称（两个方向的边）和它自己声明的规则全部删掉。删掉一个对话不该在别处留下一个没人应答的名字。别的插件要清理自己的记录，监听同一个事件即可。
 - **handle 还没进 GUI。** 人看到的是会话标题；handle 目前通过 `conversation_list` 可见。要在会话头部直接显示，需要加一个 client 半区插件。
 - **`conversation_spawn` 的目录与工作区登记。** Harness 的 `sessionController.create` 只在**按工作区 id 创建**时才把会话登记进工作区名册（`session-controller/src/commands.ts`）；按 `cwd` 创建虽然会把日志写进对应目录（会话存储按 cwd 分目录），名册里却不会多一条。所以本插件在创建后会自己补一次登记：按 `cwd` 规范化后找**已注册**的同名工作区并 `attachSession`。它**不会**替你新建工作区——目录没注册过就是空操作，行为和以前完全一样。
 - **连接就是最轻的那条边了。** 自动连接和 `conversation_link` 建立的是同一条记录：一个昵称加一行历史，**不带任何权限或义务**。规则完全不在连接上——它属于声明它的对话，所以「只想平级问答」不需要另一种边，现在的边本来就不带别的东西。

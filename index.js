@@ -208,6 +208,36 @@ export function apply(ctx, config = {}) {
     ctx.tools.register(definition)
   }
 
+  /*
+   * A deleted conversation leaves nothing behind here.
+   *
+   * The deletion surface removes a conversation's log, its projection cache,
+   * and its workspace record — none of which is where a nickname, an edge, or
+   * a rule lives. Without this, deleting a conversation from the sidebar would
+   * leave this plugin still addressing a name that nothing answers, and still
+   * listing it as a peer. The event is emitted by the deletion surface before
+   * it announces the removal, so the state is clean by the time the list
+   * updates. A missing listener is not an error: the emitter is optional
+   * exactly like every other service here.
+   */
+  try {
+    ctx.on('conversation/deleted', (sessionId) => {
+      try {
+        const forgotten = store.forget(String(sessionId))
+        if (forgotten.links > 0 || forgotten.rules > 0 || forgotten.handle) {
+          optional(ctx, 'logger')?.info?.(
+            `conversation-link: forgot "${String(sessionId)}" `
+            + `(${forgotten.links} links, ${forgotten.rules} rules, handle: ${forgotten.handle})`)
+        }
+      } catch (error) {
+        optional(ctx, 'logger')?.warn?.(
+          `conversation-link: cannot forget deleted conversation "${String(sessionId)}": ${String(error)}`)
+      }
+    })
+  } catch (error) {
+    optional(ctx, 'logger')?.warn?.(`conversation-link: cannot subscribe to conversation/deleted: ${String(error)}`)
+  }
+
   // Stage `before`: refuse a pending call. A rule that vetoes short-circuits the
   // chain on purpose — the Harness already vetoed the work, so running inner
   // policy (including a human approval prompt) would ask about a call that can

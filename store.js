@@ -464,4 +464,30 @@ export class BindingStore {
     if (removed.length > 0) this.#write()
     return removed.map(rule => ({ ...rule }))
   }
+
+  /**
+   * Forget every trace of one conversation.
+   *
+   * A deleted conversation must not survive as a nickname, an edge, a rule, or
+   * a handle. Its links are dropped in both directions — the ones it made and
+   * the ones other conversations made for it, because a nickname pointing at a
+   * conversation nobody can open is not a record, it is a dead end. Its own
+   * rules go with it; the rules it declared are the only ones it owned.
+   * @param sessionId - the conversation that no longer exists.
+   * @returns what was forgotten, for the caller's log line.
+   */
+  forget(sessionId) {
+    const state = this.#read()
+    const links = state.links.filter(link => link.owner === sessionId || link.peer === sessionId)
+    const rules = state.rules.filter(rule => rule.owner === sessionId)
+    const hadHandle = Object.hasOwn(state.handles, sessionId)
+    if (links.length === 0 && rules.length === 0 && !hadHandle) {
+      return { links: 0, rules: 0, handle: false }
+    }
+    state.links = state.links.filter(link => link.owner !== sessionId && link.peer !== sessionId)
+    state.rules = state.rules.filter(rule => rule.owner !== sessionId)
+    delete state.handles[sessionId]
+    this.#write()
+    return { links: links.length, rules: rules.length, handle: hadHandle }
+  }
 }

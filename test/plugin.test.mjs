@@ -829,6 +829,45 @@ test('messaging a closed conversation opens it first', async (t) => {
   assert.equal(again.opened, false)
 })
 
+test('deleting a conversation forgets its handle, its links, and its rules', async (t) => {
+  const { ctx, tools, a, b, dir } = mount()
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  await call(tools, 'conversation_link', { target: 'session-b', name: 'frontend', note: 'UI' }, a)
+  await call(tools, 'conversation_rule', { action: 'add', tool: 'bash' }, a)
+  const before = await call(tools, 'conversation_list', {}, a)
+  assert.equal(before.links.length, 1)
+
+  // B is deleted from the sidebar: the deletion surface emits before it
+  // announces the removal, so nothing here may still name it afterwards.
+  const onDeleted = ctx.listeners.get('conversation/deleted')
+  assert.equal(typeof onDeleted, 'function', 'the plugin subscribes to deletions')
+  onDeleted('session-b')
+
+  // Read the file before any other tool call: listing mints a handle for every
+  // conversation it walks, which would put one back for a peer it can still see.
+  const state = JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8'))
+  assert.equal(Object.hasOwn(state.handles, 'session-b'), false, 'its handle is gone')
+  const after = await call(tools, 'conversation_list', {}, a)
+  assert.deepEqual(after.links, [], 'the nickname is gone')
+  assert.deepEqual(state.links.filter(link => link.peer === 'session-b'), [])
+  // A rule belongs to its author, and the author was not deleted.
+  const rules = await call(tools, 'conversation_rule', { action: 'list' }, a)
+  assert.equal(rules.rules.length, 1, 'A keeps the rule A declared')
+})
+
+test('deleting a conversation also drops the links other conversations made for it', async (t) => {
+  const { ctx, tools, a, b, dir } = mount()
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  await call(tools, 'conversation_link', { target: 'session-b', name: 'frontend' }, a)
+  await call(tools, 'conversation_rule', { action: 'add', stage: 'input', text: 'stay put' }, b)
+  ctx.listeners.get('conversation/deleted')('session-b')
+
+  const state = JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8'))
+  assert.deepEqual(state.links, [], 'a nickname pointing at a deleted conversation is a dead end')
+  assert.deepEqual(state.rules, [], "B's own rules leave with B")
+  assert.deepEqual(state.handles, {}, 'and no handle survives either')
+})
+
 test('links, rules, and handles survive a remount', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'conversation-link-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
