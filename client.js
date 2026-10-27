@@ -34,8 +34,16 @@ window.__ModuleLoader__.load({
 		var module = { exports: {} }
 		var exports = module.exports
 
-		/** The `source.plugin` value that identifies this plugin's rows. */
-		const SOURCE_LABEL = 'dsh-conversation-link'
+		/**
+		 * The producer label this half matches on: the `source.kind` the host half
+		 * writes, which the Harness renders verbatim for an unrecognized producer.
+		 * Session format v4 retires a bare `plugin` kind, so the label is the
+		 * namespaced `plugin:<package>` form the migration itself synthesizes.
+		 */
+		const SOURCE_LABEL = 'plugin:dsh-conversation-link'
+
+		/** This package's own id, used for the injected style tag only. */
+		const PLUGIN_ID = 'dsh-conversation-link'
 
 		/** Marks the wrapper whose disclosure header this half hides. */
 		const CARD_ATTR = 'data-cb-peer-card'
@@ -211,7 +219,7 @@ window.__ModuleLoader__.load({
 			}
 
 			const style = document.createElement('style')
-			style.setAttribute('data-plugin', SOURCE_LABEL)
+			style.setAttribute('data-plugin', PLUGIN_ID)
 			style.textContent = CSS
 			document.head.appendChild(style)
 

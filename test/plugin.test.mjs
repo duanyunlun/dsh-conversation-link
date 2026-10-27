@@ -255,9 +255,9 @@ test('delivered messages carry relay attribution and reply addressing', async (t
   const message = b.delivered[0].message
   assert.equal(message.role, 'user')
   // `relay` is what the bundled client half promotes into a message card; the
-  // source stays a plain plugin source and carries the sender for it.
-  assert.equal(message.source.kind, 'plugin')
-  assert.equal(message.source.plugin, 'dsh-conversation-link')
+  // source carries this plugin's v4 producer kind and the sender for it.
+  assert.equal(message.source.kind, 'plugin:dsh-conversation-link')
+  assert.equal(Object.hasOwn(message.source, 'plugin'), false)
   assert.equal(message.source.form, 'relay')
   assert.equal(message.source.senderSessionId, 'session-a')
   assert.match(message.source.summary, /^[a-z]+-[a-z]+ → Ship the login form\.$/)

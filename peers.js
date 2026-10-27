@@ -12,6 +12,9 @@
 
 import { randomUUID } from 'node:crypto'
 
+/** This plugin's Session-format-v4 producer kind: `plugin:` plus the package name. */
+const PRODUCER_KIND = 'plugin:dsh-conversation-link'
+
 /** One transcript row header renders this summary without expanding, so it stays inside the bound. */
 const NOTICE_SUMMARY_LIMIT = 118
 
@@ -262,9 +265,12 @@ export function frameMessage(detail) {
  *   bounded one-line summary on the collapsed row's header, so the traffic stays
  *   readable even when no client half can restyle it.
  *
- * Either way the source is a plain plugin source: no `source.kind` the Session
- * format validator audits is invented here, and `senderSessionId` rides along
- * for the client half.
+ * Either way the source carries this plugin's own producer kind —
+ * `plugin:dsh-conversation-link`, the shape Session format v4 requires and the
+ * one its v3 migration synthesizes for an unknown plugin. A bare
+ * `kind: 'plugin'` is retired V3 syntax that a v4 log refuses outright, so the
+ * producer name lives inside `kind` and `senderSessionId` rides along for the
+ * client half.
  * @param detail - sender identity, display summary, chosen form, and the exact model-facing text.
  * @returns the frozen user message to deliver.
  */
@@ -274,8 +280,7 @@ export function relayMessage(detail) {
     role: 'user',
     content: Object.freeze([{ type: 'text', text: detail.text }]),
     source: Object.freeze({
-      kind: 'plugin',
-      plugin: 'dsh-conversation-link',
+      kind: PRODUCER_KIND,
       form: detail.form === 'notice' ? 'notice' : 'relay',
       summary: detail.summary,
       senderSessionId: detail.senderId,
