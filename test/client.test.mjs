@@ -186,7 +186,7 @@ async function loadClientHalf() {
  * part: clicking the header records an expansion that a later render performs,
  * exactly as the browser defers it.
  */
-function collapsedRow({ source = 'dsh-conversation-link', senderId = 'session-afbe616a-5e53-499a-88fe-4272445a6a57' } = {}) {
+function collapsedRow({ source = 'plugin:dsh-conversation-link', senderId = 'session-afbe616a-5e53-499a-88fe-4272445a6a57' } = {}) {
   const wrapper = new FakeElement('div', { 'data-open': '' })
   const header = new FakeElement('div', { 'data-disclosure-row': '', 'aria-expanded': 'false' })
   const label = new FakeElement('span', { 'data-context-source': '' })
